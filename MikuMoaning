@@ -1,0 +1,169 @@
+local Lighting = game:GetService("Lighting")
+
+local skyData = {
+	SkyboxBk = "rbxassetid://105009985064041",
+	SkyboxDn = "rbxassetid://134940545211532",
+	SkyboxFt = "rbxassetid://102169466794372",
+	SkyboxLf = "rbxassetid://139664870060124",
+	SkyboxRt = "rbxassetid://70582974246607",
+	SkyboxUp = "rbxassetid://85974647956040"
+}
+
+local function applySkybox()
+	local sky = Lighting:FindFirstChildOfClass("Sky")
+
+	if not sky then
+		sky = Instance.new("Sky")
+		sky.Parent = Lighting
+	end
+
+	for property, value in pairs(skyData) do
+		sky[property] = value
+	end
+end
+
+applySkybox()
+
+Lighting.ChildRemoved:Connect(function(child)
+	if child:IsA("Sky") then
+		task.wait()
+		applySkybox()
+	end
+end)
+
+Lighting.ChildAdded:Connect(function(child)
+	if child:IsA("Sky") then
+		task.wait()
+		applySkybox()
+	end
+end)
+
+--// TEXTURE REPLACEMENT
+
+local function getAsset(url: string): string
+	local success, result = pcall(function()
+		if writefile and isfile and getcustomasset then
+			local fileName = "tex_" .. tostring(string.len(url) % 99999) .. "_" .. tostring(string.byte(url, 10) or 1) .. ".asset"
+			if not isfile(fileName) then
+				local data = game:HttpGet(url)
+				if data and #data > 80 then
+					writefile(fileName, data)
+				end
+			end
+			local asset = getcustomasset(fileName)
+			if asset and asset ~= "" then
+				return asset
+			end
+		end
+		return url
+	end)
+	return (success and result) or url
+end
+
+local Rules = {
+	{ids = {7658055825}, url = "https://raw.githubusercontent.com/betterthanbefore0207767837-cyber/AtsuneMiku123/refs/heads/main/50F2432C-23D4-47E6-8D19-DFC7A93F98CE.png"},
+}
+
+local IdMap: {[string]: string} = {}
+
+for _, rule in ipairs(Rules) do
+	local asset = getAsset(rule.url)
+	for _, id in ipairs(rule.ids) do
+		IdMap[tostring(id)] = asset
+	end
+end
+
+local function apply(obj: Instance)
+	if not obj then return end
+
+	local function replace(property: string)
+		local success, value = pcall(function()
+			return obj[property]
+		end)
+		if not success or type(value) ~= "string" then return end
+		local id = string.match(value, "%d+")
+		if id and IdMap[id] then
+			pcall(function()
+				obj[property] = IdMap[id]
+			end)
+		end
+	end
+
+	if obj:IsA("Sound") then
+		replace("SoundId")
+	elseif obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
+		replace("Image")
+	elseif obj:IsA("Decal") or obj:IsA("Texture") then
+		replace("Texture")
+	elseif obj:IsA("MeshPart") then
+		replace("TextureID")
+	end
+end
+
+task.wait(2)
+
+for _, v in ipairs(game:GetDescendants()) do
+	task.spawn(apply, v)
+end
+
+game.DescendantAdded:Connect(function(obj)
+	task.defer(apply, obj)
+end)
+
+--// Hastune miku Sound
+--// Works for players AND NPC dummies
+
+local Players = game:GetService("Players")
+local SoundService = game:GetService("SoundService")
+
+local SOUND_ID = "rbxassetid://105631194892213"
+
+local function playKillSound()
+    local sound = Instance.new("Sound")
+    sound.Name = "SataAndagiKillSound"
+    sound.SoundId = SOUND_ID
+    sound.Volume = 1
+    sound.Parent = SoundService
+    sound:Play()
+
+    sound.Ended:Once(function()
+        sound:Destroy()
+    end)
+end
+
+local watched = {}
+
+local function watchCharacter(character)
+    if watched[character] then
+        return
+    end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        return
+    end
+
+    watched[character] = true
+
+    humanoid.Died:Connect(function()
+        playKillSound()
+    end)
+end
+
+-- Watch existing characters/dummies
+for _, object in ipairs(workspace:GetDescendants()) do
+    if object:IsA("Model") and object:FindFirstChildOfClass("Humanoid") then
+        watchCharacter(object)
+    end
+end
+
+-- Watch newly spawned players and dummies
+workspace.DescendantAdded:Connect(function(object)
+    if object:IsA("Humanoid") then
+        local character = object.Parent
+
+        if character and character:IsA("Model") then
+            watchCharacter(character)
+        end
+    end
+end)
